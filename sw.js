@@ -1,6 +1,7 @@
-// sw.js — кешираме само локалните файлове. three.js идва от CDN и при
-// първо зареждане иска мрежа; след това браузърът си го кешира сам.
-const CACHE = 'arhunt-v1';
+// sw.js — v2: network-first за локалните файлове.
+// v1 беше cache-first и залепваше стар CSS/JS до ръчно изчистване.
+// Сега мрежата води, кешът е само резерва при офлайн.
+const CACHE = 'arhunt-v2';
 const LOCAL = [
   './',
   './index.html',
@@ -32,7 +33,14 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (url.origin !== self.location.origin) return; // CDN не го пипаме
+
   e.respondWith(
-    caches.match(e.request).then((hit) => hit || fetch(e.request))
+    fetch(e.request)
+      .then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+        return res;
+      })
+      .catch(() => caches.match(e.request))
   );
 });
