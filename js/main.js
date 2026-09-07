@@ -23,6 +23,21 @@ function stage(text) {
   note.textContent = text;
 }
 
+// Незадължителна подсистема: ако гръмне веднъж, изключваме я завинаги и
+// продължаваме. Изключение в кадъра иначе спира целия рендер и играта
+// изглежда замръзнала.
+const broken = new Set();
+function safe(name, fn) {
+  if (broken.has(name)) return;
+  try {
+    fn();
+  } catch (err) {
+    broken.add(name);
+    hud.toast(`изключих: ${name}`, 1800);
+    console.warn(`[arhunt] ${name} гръмна:`, err);
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Сцена                                                               */
 /* ------------------------------------------------------------------ */
@@ -188,6 +203,7 @@ async function enterAR() {
   hud.status('насочи телефона към пода и го помърдай бавно');
   scanClock = 0;
   lastTime = 0;
+  broken.clear();
   game.reset();
 
   renderer.xr.setAnimationLoop(onXRFrame);
@@ -222,6 +238,16 @@ function onXRFrame(time, frame) {
 
   const pose = frame.getViewerPose(refSpace);
 
+  // Камерата трябва да е готова ПРЕДИ игровата логика: дроновете мерят
+  // разстояние до нея, а позиционният звук се панорамира спрямо нея.
+  if (pose) {
+    const p = pose.transform.position;
+    const o = pose.transform.orientation;
+    camera.position.set(p.x, p.y, p.z);
+    camera.quaternion.set(o.x, o.y, o.z, o.w);
+    camera.updateMatrixWorld(true);
+  }
+
   // Hit test за мерника и за раждане върху равнина
   let spawnPose = null;
   if (hitTestSource) {
@@ -241,9 +267,12 @@ function onXRFrame(time, frame) {
     }
   }
 
-  if (planes) planes.update(frame, refSpace);
-  if (envLight) envLight.update(frame);
-  if (depth && pose && pose.views.length) depth.update(frame, pose.views[0]);
+  // Козметиката не бива да спира играта
+  safe('равнини', () => planes?.update(frame, refSpace));
+  safe('светлина', () => envLight?.update(frame));
+  safe('дълбочина', () => {
+    if (pose && pose.views.length) depth?.update(frame, pose.views[0]);
+  });
 
   // Автоматичен старт, ако сканирането се проточи
   if (game.state === STATE.SCANNING) {
@@ -256,9 +285,13 @@ function onXRFrame(time, frame) {
   }
 
   game.update(dt, spawnPose);
-  syncAnchors(frame);
-  applyOcclusion();
+  safe('котви', () => syncAnchors(frame));
+  safe('закриване', () => applyOcclusion());
   hud.update(game);
+
+  // Без този ред нищо от сцената не се рисува. three.js не рендерира
+  // сам от setAnimationLoop — само подава кадъра.
+  renderer.render(scene, camera);
 }
 
 // Целите върху равнина се закотвят, за да не плуват при загуба на тракинг
