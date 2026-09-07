@@ -20,7 +20,9 @@ html, body {
   overscroll-behavior: none;
 }
 
-canvas { position: fixed; inset: 0; }
+/* Слоеве: видео -1, canvas 0, наслагване 20, стартов екран 30.
+   Без това canvas-ът лежи върху стартовия екран и изяжда тапите. */
+canvas { position: fixed; inset: 0; z-index: 0; }
 
 #camera-feed {
   position: fixed;
@@ -37,6 +39,7 @@ canvas { position: fixed; inset: 0; }
 #start {
   position: fixed;
   inset: 0;
+  z-index: 30;
   padding: 28px 22px calc(28px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
@@ -88,6 +91,7 @@ canvas { position: fixed; inset: 0; }
 #overlay {
   position: fixed;
   inset: 0;
+  z-index: 20;
   pointer-events: none;
   padding: calc(14px + env(safe-area-inset-top)) 16px
            calc(14px + env(safe-area-inset-bottom));
