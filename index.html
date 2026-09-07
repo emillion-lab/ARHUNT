@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#05070c">
+<meta name="mobile-web-app-capable" content="yes">
+<title>ARHUNT</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="stylesheet" href="./styles.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js"
+  }
+}
+</script>
+</head>
+<body>
+
+<video id="camera-feed" class="hidden" playsinline muted></video>
+
+<!-- Стартов екран -->
+<div id="start">
+  <h1>ARHUNT</h1>
+  <p class="tag">Лов на цели в стаята ти.</p>
+  <p id="support-note" class="note">Проверявам устройството…</p>
+  <button id="btn-ar" class="btn primary" disabled>Пусни в AR</button>
+  <button id="btn-fallback" class="btn">Резервен режим (камера + жироскоп)</button>
+  <ul class="legend">
+    <li><i class="sw green"></i> зелена сфера, върти се — стреляй</li>
+    <li><i class="sw green"></i> зелена сфера, <b>пулсира</b> — мимик, не стреляй</li>
+    <li><i class="sw red"></i> червен дрон — приближава и жили, чува се преди да се види</li>
+    <li><i class="sw gold"></i> златен — рядък, кратък, много точки</li>
+  </ul>
+</div>
+
+<!-- Наслагване върху камерата -->
+<div id="overlay" class="hidden">
+  <div id="top">
+    <div id="score-wrap">
+      <span id="score">0</span>
+      <span id="combo"></span>
+    </div>
+    <div id="right">
+      <span id="wave">вълна 1</span>
+      <span id="caps"></span>
+    </div>
+  </div>
+
+  <div id="bars">
+    <div class="bar"><div id="health-fill" class="fill health"></div></div>
+    <div class="bar thin"><div id="heat-fill" class="fill heat"></div></div>
+  </div>
+
+  <div id="crosshair"></div>
+  <div id="status"></div>
+  <div id="toast"></div>
+
+  <div id="controls">
+    <button id="btn-sound" class="chip" aria-pressed="true">звук вкл</button>
+    <button id="btn-planes" class="chip" aria-pressed="true">равнини вкл</button>
+  </div>
+
+  <div id="panel">
+    <h2 id="panel-title"></h2>
+    <div id="panel-body"></div>
+  </div>
+</div>
+
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>
