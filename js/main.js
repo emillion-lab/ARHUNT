@@ -13,8 +13,15 @@ import { FallbackMode } from './fallback.js';
 const overlay = document.getElementById('overlay');
 const startScreen = document.getElementById('start');
 const video = document.getElementById('camera-feed');
+const note = document.getElementById('support-note');
 
 const hud = new HUD(overlay);
+
+// Всяка стъпка от влизането в AR се изписва на екрана. Ако нещо забие,
+// последният видим номер казва точно къде.
+function stage(text) {
+  note.textContent = text;
+}
 
 /* ------------------------------------------------------------------ */
 /* Сцена                                                               */
@@ -126,13 +133,17 @@ let lastHitPos = new THREE.Vector3();
 let activeInput = null;
 let lastTime = 0;
 let scanClock = 0;
+let arSupported = false;
 
 async function enterAR() {
-  const { ar } = await checkSupport();
-  if (!ar) throw new Error('immersive-ar не се поддържа');
-
+  // ВАЖНО: нито един await преди requestSession. Проверката за поддръжка
+  // вече е направена при зареждане; ако я направим тук, Chrome губи
+  // user activation-а от тапа и отказва сесията, понякога без грешка.
+  stage('1 · искам сесия…');
   const started = await startSession(overlay);
   session = started.session;
+
+  stage('2 · сесията тръгна');
   caps = describeSession(session);
   if (caps.unknown) {
     // Стар Chrome без enabledFeatures — предполагаме, че всичко е там
@@ -140,12 +151,15 @@ async function enterAR() {
   }
   hud.setCaps(caps);
 
+  stage('3 · подавам на three.js');
   await renderer.xr.setSession(session);
   refSpace = renderer.xr.getReferenceSpace();
 
+  stage('4 · hit-test');
   const viewerSpace = await session.requestReferenceSpace('viewer');
   hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
 
+  stage('5 · свят');
   depth = new DepthOcclusion(caps.depth);
   planes = new PlaneViz(scene);
   envLight = new EnvLight(scene);
@@ -163,14 +177,17 @@ async function enterAR() {
   session.addEventListener('end', () => {
     session = null;
     hitTestSource = null;
+    renderer.xr.setAnimationLoop(null);
     startScreen.classList.remove('hidden');
     overlay.classList.add('hidden');
+    stage('Сесията приключи.');
   });
 
   startScreen.classList.add('hidden');
   overlay.classList.remove('hidden');
   hud.status('насочи телефона към пода и го помърдай бавно');
   scanClock = 0;
+  lastTime = 0;
   game.reset();
 
   renderer.xr.setAnimationLoop(onXRFrame);
@@ -290,6 +307,7 @@ async function enterFallback() {
   key.position.set(1, 2, 1);
   scene.add(key);
 
+  stage('камера…');
   await fallback.start();
   await sound.resume();
 
@@ -325,29 +343,21 @@ async function enterFallback() {
 /* Стартов екран                                                       */
 /* ------------------------------------------------------------------ */
 async function boot() {
-  const { ar } = await checkSupport();
   const arBtn = document.getElementById('btn-ar');
   const fbBtn = document.getElementById('btn-fallback');
-  const note = document.getElementById('support-note');
 
-  if (ar) {
-    arBtn.disabled = false;
-    note.textContent = 'Устройството поддържа WebXR AR.';
-  } else {
-    arBtn.disabled = true;
-    note.textContent =
-      'WebXR AR не е наличен тук. Нужни са Chrome за Android и Google Play Services for AR. Резервният режим работи навсякъде.';
-  }
-  fbBtn.disabled = !FallbackMode.available();
-
+  // Слушателите се закачат ПЪРВИ. Ако проверката за поддръжка се забави
+  // или гръмне, бутоните пак реагират.
   arBtn.addEventListener('click', () => {
+    if (!arSupported) { stage('Няма WebXR AR на това устройство.'); return; }
     enterAR().catch((err) => {
-      note.textContent = `Сесията не тръгна: ${err.message}`;
+      stage(`Спря на: ${note.textContent} → ${err.name}: ${err.message || 'без съобщение'}`);
     });
   });
+
   fbBtn.addEventListener('click', () => {
     enterFallback().catch((err) => {
-      note.textContent = `Камерата не тръгна: ${err.message}`;
+      stage(`Камерата не тръгна: ${err.name}: ${err.message || 'без съобщение'}`);
     });
   });
 
@@ -364,6 +374,15 @@ async function boot() {
     e.currentTarget.textContent = on ? 'равнини вкл' : 'равнини изкл';
     planes?.setVisible(on);
   });
+
+  fbBtn.disabled = !FallbackMode.available();
+
+  const { ar } = await checkSupport();
+  arSupported = ar;
+  arBtn.disabled = !ar;
+  stage(ar
+    ? 'Устройството поддържа WebXR AR.'
+    : 'WebXR AR не е наличен тук. Нужни са Chrome за Android и Google Play Services for AR. Резервният режим работи навсякъде.');
 }
 
 boot();
