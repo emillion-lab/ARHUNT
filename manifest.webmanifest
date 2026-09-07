@@ -1,0 +1,14 @@
+{
+  "name": "ARHUNT",
+  "short_name": "ARHUNT",
+  "description": "Лов на цели в добавена реалност, директно в браузъра.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#05070c",
+  "theme_color": "#05070c",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
