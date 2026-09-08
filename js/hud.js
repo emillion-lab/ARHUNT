@@ -16,6 +16,7 @@ export class HUD {
       panelTitle: root.querySelector('#panel-title'),
       panelBody: root.querySelector('#panel-body'),
       caps: root.querySelector('#caps'),
+      debug: root.querySelector('#debug'),
       crosshair: root.querySelector('#crosshair')
     };
     this.toastTimer = null;
@@ -30,6 +31,12 @@ export class HUD {
       caps.light ? 'светлина' : null
     ].filter(Boolean);
     this.el.caps.textContent = line.length ? line.join(' · ') : 'базов AR режим';
+  }
+
+  // Живи броячи. Единственият надежден начин да се види отдалеч какво
+  // прави кадърът, без да си вързан с USB на лаптоп.
+  debug(text) {
+    if (this.el.debug) this.el.debug.textContent = text;
   }
 
   status(text) {
