@@ -17,7 +17,12 @@ export class DepthOcclusion {
     this.active = !!active;
     this.info = null;
     this.flipY = false; // някои реализации броят Y отгоре, други отдолу
-    this.margin = 0.12; // метра толеранс, за да не мига по ръбовете
+
+    // Праговете са нарочно консервативни. Закриването е украса; ако сбърка,
+    // играта става невидима, а това е много по-лошо от цел, която стърчи
+    // пред мебел. По-добре да пропусне закриване, отколкото да скрие всичко.
+    this.margin = 0.30;      // метра разлика, преди изобщо да скрием нещо
+    this.minDistance = 1.2;  // по-близките цели не се крият никога
   }
 
   update(frame, view) {
@@ -31,7 +36,10 @@ export class DepthOcclusion {
 
   // worldPos е THREE.Vector3 в същото пространство като камерата
   isOccluded(worldPos, camera) {
-    if (!this.info) return false;
+    if (!this.active || !this.info) return false;
+
+    const dist = camera.position.distanceTo(worldPos);
+    if (dist < this.minDistance) return false;
 
     const ndc = worldPos.clone().project(camera);
     if (Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1 || ndc.z > 1) return false;
@@ -48,7 +56,6 @@ export class DepthOcclusion {
     }
     if (!real || real <= 0 || !isFinite(real)) return false;
 
-    const dist = camera.position.distanceTo(worldPos);
     return real + this.margin < dist;
   }
 }
@@ -62,7 +69,9 @@ export class EnvLight {
     this.probe.intensity = 1;
     this.sun = new THREE.DirectionalLight(0xffffff, 1.0);
     this.sun.position.set(0.5, 1, 0.25);
-    this.ambient = new THREE.HemisphereLight(0xbfd4ff, 0x2a2a35, 0.55);
+    // Базовата светлина остава достатъчно силна дори ако оценката от
+    // средата никога не дойде — иначе целите излизат черни.
+    this.ambient = new THREE.HemisphereLight(0xbfd4ff, 0x2a2a35, 0.9);
     scene.add(this.probe, this.sun, this.ambient);
     this.xrProbe = null;
   }
@@ -85,7 +94,7 @@ export class EnvLight {
 
     if (est.sphericalHarmonicsCoefficients) {
       this.probe.sh.fromArray(est.sphericalHarmonicsCoefficients);
-      this.ambient.intensity = 0.15; // SH-то вече носи околната светлина
+      this.ambient.intensity = 0.3; // SH-то вече носи околната светлина
     }
     const dir = est.primaryLightDirection;
     const int = est.primaryLightIntensity;
@@ -93,7 +102,7 @@ export class EnvLight {
     if (int) {
       // intensity идва като RGB в произволна скала — вземаме яркостта
       const lum = 0.2126 * int.x + 0.7152 * int.y + 0.0722 * int.z;
-      this.sun.intensity = THREE.MathUtils.clamp(lum, 0.2, 3.0);
+      this.sun.intensity = THREE.MathUtils.clamp(lum, 0.4, 3.0);
     }
   }
 }
