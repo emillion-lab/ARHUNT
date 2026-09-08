@@ -205,7 +205,7 @@ export class Game {
     // Дроновете идват от въздуха около играча — не им трябва равнина
     if (type === TYPES.DRONE) {
       const angle = Math.random() * Math.PI * 2;
-      const dist = 2.0 + Math.random() * 1.8;
+      const dist = 1.6 + Math.random() * 1.2;
       return new THREE.Vector3(
         cam.position.x + Math.cos(angle) * dist,
         cam.position.y + (Math.random() - 0.3) * 0.9,
@@ -223,14 +223,15 @@ export class Game {
       return spawnPose.position.clone().add(jitter);
     }
 
-    // Без равнина: пред камерата, за да не спре играта
+    // Без равнина: близо пред камерата. Нарочно по-близо от преди —
+    // далечните цели попадат зад реални стени и дълбочината ги скрива.
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
     const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.quaternion);
     return cam.position
       .clone()
-      .addScaledVector(forward, 1.2 + Math.random() * 1.6)
-      .addScaledVector(right, (Math.random() - 0.5) * 1.4)
-      .add(new THREE.Vector3(0, (Math.random() - 0.5) * 0.7, 0));
+      .addScaledVector(forward, 0.9 + Math.random() * 0.8)
+      .addScaledVector(right, (Math.random() - 0.5) * 1.0)
+      .add(new THREE.Vector3(0, (Math.random() - 0.5) * 0.5, 0));
   }
 
   end() {
