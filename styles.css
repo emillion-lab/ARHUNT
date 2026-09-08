@@ -20,18 +20,19 @@ html, body {
   overscroll-behavior: none;
 }
 
-/* Слоеве: видео -1, canvas 0, наслагване 20, стартов екран 30.
-   Без това canvas-ът лежи върху стартовия екран и изяжда тапите. */
-canvas { position: fixed; inset: 0; z-index: 0; }
-
+/* Слоеве: видео 0, canvas 1, наслагване 20, стартов екран 30.
+   Видеото НЕ бива да е на z-index: -1 — тогава то се рисува зад
+   непрозрачния фон на body и екранът излиза черен. */
 #camera-feed {
   position: fixed;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  z-index: -1;
+  z-index: 0;
 }
+
+canvas { position: fixed; inset: 0; z-index: 1; }
 
 .hidden { display: none !important; }
 
@@ -111,6 +112,7 @@ canvas { position: fixed; inset: 0; z-index: 0; }
 #right { text-align: right; font-size: 12px; color: var(--dim); }
 #right span { display: block; text-shadow: 0 1px 6px #000; }
 #wave { font-size: 14px; color: var(--fg); }
+#debug { font-variant-numeric: tabular-nums; }
 
 #bars { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; }
 .bar { height: 7px; background: #0009; border-radius: 4px; overflow: hidden; }
