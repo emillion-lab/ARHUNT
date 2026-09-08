@@ -149,6 +149,8 @@ let activeInput = null;
 let lastTime = 0;
 let scanClock = 0;
 let arSupported = false;
+let frames = 0;
+let blindFor = 0;
 
 async function enterAR() {
   // ВАЖНО: нито един await преди requestSession. Проверката за поддръжка
@@ -167,6 +169,10 @@ async function enterAR() {
   hud.setCaps(caps);
 
   stage('3 · подавам на three.js');
+  // three.js по подразбиране иска 'local-floor'. То е само optional в
+  // сесията, значи може да го няма — тогава setSession гърми. 'local'
+  // е гарантирано за immersive-ar.
+  renderer.xr.setReferenceSpaceType('local');
   await renderer.xr.setSession(session);
   refSpace = renderer.xr.getReferenceSpace();
 
@@ -192,7 +198,7 @@ async function enterAR() {
   session.addEventListener('end', () => {
     session = null;
     hitTestSource = null;
-    renderer.xr.setAnimationLoop(null);
+    renderer.setAnimationLoop(null);
     startScreen.classList.remove('hidden');
     overlay.classList.add('hidden');
     stage('Сесията приключи.');
@@ -203,10 +209,13 @@ async function enterAR() {
   hud.status('насочи телефона към пода и го помърдай бавно');
   scanClock = 0;
   lastTime = 0;
+  frames = 0;
+  blindFor = 0;
   broken.clear();
   game.reset();
 
-  renderer.xr.setAnimationLoop(onXRFrame);
+  // Документираният вход, не вътрешният на WebXRManager.
+  renderer.setAnimationLoop(onXRFrame);
 }
 
 function onSelect(controller, inputSource) {
@@ -234,7 +243,13 @@ function onSelect(controller, inputSource) {
 function onXRFrame(time, frame) {
   const dt = lastTime ? Math.min(0.05, (time - lastTime) / 1000) : 0;
   lastTime = time;
-  if (!frame) return;
+  frames++;
+
+  // Извън AR сесия (или преди първия кадър с поза) просто рисуваме сцената.
+  if (!frame) {
+    renderer.render(scene, camera);
+    return;
+  }
 
   const pose = frame.getViewerPose(refSpace);
 
@@ -289,6 +304,29 @@ function onXRFrame(time, frame) {
   safe('закриване', () => applyOcclusion());
   hud.update(game);
 
+  // Броячи на екрана: кадри, има ли hit-test, колко равнини,
+  // видими/живи цели, състояние. Единственият начин да се диагностицира
+  // това нещо, без телефонът да е вързан за лаптоп.
+  const alive = game.targets.length;
+  const vis = game.targets.filter((t) => t.object.visible).length;
+  if (frames % 6 === 0) {
+    hud.debug(`f${frames} hit${spawnPose ? 1 : 0} pl${planes ? planes.count : 0} t${vis}/${alive} ${game.state}`);
+  }
+
+  // Самозащита: ако закриването скрие всичко за две секунди, значи
+  // праговете не пасват на това устройство. Изключваме го, вместо да
+  // оставим играча пред празен екран.
+  if (depth && depth.active && alive > 0 && vis === 0) {
+    blindFor += dt;
+    if (blindFor > 2) {
+      depth.active = false;
+      for (const t of game.targets) t.object.visible = true;
+      hud.toast('изключих закриването', 1800);
+    }
+  } else {
+    blindFor = 0;
+  }
+
   // Без този ред нищо от сцената не се рисува. three.js не рендерира
   // сам от setAnimationLoop — само подава кадъра.
   renderer.render(scene, camera);
@@ -323,8 +361,7 @@ function syncAnchors(frame) {
 function applyOcclusion() {
   if (!depth || !depth.active) return;
   for (const t of game.targets) {
-    const occluded = depth.isOccluded(t.object.position, camera);
-    t.object.visible = !occluded;
+    t.object.visible = !depth.isOccluded(t.object.position, camera);
   }
 }
 
@@ -354,9 +391,14 @@ async function enterFallback() {
   game.start();
   setTimeout(() => hud.status(''), 2600);
 
+  let fbFrames = 0;
   fallback.onFrame = (dt) => {
+    fbFrames++;
     game.update(dt, null);
     hud.update(game);
+    if (fbFrames % 6 === 0) {
+      hud.debug(`f${fbFrames} t${game.targets.length} ${game.state}`);
+    }
   };
 
   renderer.domElement.addEventListener('pointerdown', (e) => {
