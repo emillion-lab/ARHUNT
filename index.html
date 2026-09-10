@@ -46,7 +46,17 @@
   <p id="support-note" class="note">Проверявам устройството…</p>
   <button id="btn-ar" class="btn primary" disabled>Пусни в AR</button>
   <button id="btn-fallback" class="btn">Резервен режим (камера + жироскоп)</button>
-  <p class="note"><a href="./test.html" style="color:#4de3ff">диагностична страница</a></p>
+
+  <div class="extras">
+    <div class="extras-title">Разширени функции — включвай по една</div>
+    <label><input type="checkbox" id="opt-planes"> равнини</label>
+    <label><input type="checkbox" id="opt-anchors"> котви</label>
+    <label><input type="checkbox" id="opt-depth"> дълбочина</label>
+    <label><input type="checkbox" id="opt-light"> светлина</label>
+  </div>
+  <p class="note tiny">Изключени по подразбиране. Играта е пълна и без тях.
+    <a href="./test.html">диагностична страница</a></p>
+
   <ul class="legend">
     <li><i class="sw green"></i> зелена сфера, върти се — стреляй</li>
     <li><i class="sw green"></i> зелена сфера, <b>пулсира</b> — мимик, не стреляй</li>
