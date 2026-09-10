@@ -21,7 +21,7 @@ html, body {
 }
 
 /* Слоеве: видео 0, canvas 1, наслагване 20, стартов екран 30.
-   Видеото НЕ бива да е на z-index: -1 — тогава то се рисува зад
+   Видеото НЕ бива да е на z-index: -1 — тогава се рисува зад
    непрозрачния фон на body и екранът излиза черен. */
 #camera-feed {
   position: fixed;
@@ -41,18 +41,19 @@ canvas { position: fixed; inset: 0; z-index: 1; }
   position: fixed;
   inset: 0;
   z-index: 30;
-  padding: 28px 22px calc(28px + env(safe-area-inset-bottom));
+  padding: 24px 22px calc(24px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
+  overflow-y: auto;
   background:
     radial-gradient(120% 80% at 50% 0%, #10203a 0%, var(--bg) 60%);
 }
 
 #start h1 {
   margin: 0;
-  font-size: 40px;
+  font-size: 38px;
   letter-spacing: 6px;
   font-weight: 700;
 }
@@ -60,11 +61,13 @@ canvas { position: fixed; inset: 0; z-index: 1; }
 .tag { margin: 0; color: var(--dim); }
 
 .note {
-  margin: 6px 0 14px;
+  margin: 6px 0 12px;
   font-size: 13px;
   color: var(--dim);
-  min-height: 34px;
+  min-height: 30px;
 }
+.note.tiny { font-size: 12px; min-height: 0; margin: 2px 0 0; }
+.note a { color: var(--accent); }
 
 .btn {
   appearance: none;
@@ -80,8 +83,32 @@ canvas { position: fixed; inset: 0; z-index: 1; }
 .btn.primary { background: var(--accent); color: #04141a; border-color: transparent; }
 .btn:disabled { opacity: 0.4; }
 
-.legend { margin: 18px 0 0; padding: 0; list-style: none; font-size: 13px; color: var(--dim); }
-.legend li { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+/* отметки за незадължителните XR функции */
+.extras {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid #1e2b3e;
+  border-radius: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.extras-title {
+  flex: 1 0 100%;
+  font-size: 12px;
+  color: var(--dim);
+  margin-bottom: 2px;
+}
+.extras label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+}
+.extras input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+.legend { margin: 14px 0 0; padding: 0; list-style: none; font-size: 13px; color: var(--dim); }
+.legend li { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .legend b { color: var(--fg); }
 .sw { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .sw.green { background: var(--green); }
