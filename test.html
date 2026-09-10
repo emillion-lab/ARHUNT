@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ARHUNT · тест</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden;
+    background: #05070c; color: #e8f1ff;
+    font: 13px/1.4 ui-monospace, monospace; }
+  canvas { position: fixed; inset: 0; z-index: 1; }
+  #log { position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+    padding: 10px 12px; background: #000000b0; white-space: pre-wrap;
+    max-height: 55vh; overflow: hidden; pointer-events: none; }
+  #go { position: fixed; z-index: 20; left: 16px; right: 16px; bottom: 24px;
+    padding: 16px; border: 0; border-radius: 12px;
+    background: #4de3ff; color: #04141a; font-size: 16px; font-weight: 700; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+
+<div id="log">зареждам…</div>
+<button id="go">Пусни AR тест</button>
+
+<script type="module">
+import * as THREE from 'three';
+
+/* --- лог на екрана: без него нищо от това не е видимо на телефон --- */
+const logEl = document.getElementById('log');
+const lines = [];
+function log(...parts) {
+  lines.push(parts.join(' '));
+  if (lines.length > 16) lines.shift();
+  logEl.textContent = lines.join('\n');
+}
+function replaceLast(text) {
+  lines[lines.length - 1] = text;
+  logEl.textContent = lines.join('\n');
+}
+lines.length = 0;
+
+window.addEventListener('error', (e) => log('ГРЕШКА:', e.message, `${e.lineno}:${e.colno}`));
+window.addEventListener('unhandledrejection', (e) =>
+  log('ОТКАЗ:', e.reason && e.reason.message ? e.reason.message : String(e.reason)));
+
+log('three r' + THREE.REVISION);
+log('navigator.xr:', !!navigator.xr);
+if (navigator.xr) {
+  navigator.xr.isSessionSupported('immersive-ar')
+    .then((ok) => log('immersive-ar:', ok))
+    .catch((e) => log('isSessionSupported гръмна:', e.message));
+}
+
+/* --- минимална сцена --- */
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.xr.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 2.0));
+
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+scene.add(camera);
+
+// Кубът е ЗАКАЧЕН ЗА КАМЕРАТА. Не зависи от тракинг, от равнини, от нищо.
+// Ако се върти пред теб — рендерът работи и проблемът е в ARCore.
+// Ако го няма — рендерът е счупен и ARCore е без значение.
+const cube = new THREE.Mesh(
+  new THREE.BoxGeometry(0.12, 0.12, 0.12),
+  new THREE.MeshStandardMaterial({ color: 0x35e08a, emissive: 0x0d5c38, emissiveIntensity: 0.6 })
+);
+cube.position.set(0, -0.05, -0.6);
+camera.add(cube);
+
+// Мерникът зависи от тракинг — той е втората половина на теста.
+const reticle = new THREE.Mesh(
+  new THREE.RingGeometry(0.06, 0.08, 32).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0x4de3ff })
+);
+reticle.matrixAutoUpdate = false;
+reticle.visible = false;
+scene.add(reticle);
+
+let refSpace = null;
+let hitSrc = null;
+let frames = 0;
+let poses = 0;
+let hits = 0;
+
+document.getElementById('go').addEventListener('click', async () => {
+  const btn = document.getElementById('go');
+  btn.disabled = true;
+  try {
+    log('искам сесия…');
+    // Нищо по желание освен dom-overlay: нито дълбочина, нито котви,
+    // нито равнини, нито оценка на светлината.
+    const session = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['hit-test'],
+      optionalFeatures: ['dom-overlay'],
+      domOverlay: { root: document.body }
+    });
+    log('сесия ОК');
+    log('features:', (session.enabledFeatures && session.enabledFeatures.length)
+      ? Array.from(session.enabledFeatures).join(',')
+      : '(браузърът не дава списък)');
+
+    renderer.xr.setReferenceSpaceType('local');
+    renderer.setAnimationLoop(onFrame); // ПРЕДИ setSession
+    await renderer.xr.setSession(session);
+
+    refSpace = renderer.xr.getReferenceSpace();
+    log('refSpace:', !!refSpace);
+
+    const viewer = await session.requestReferenceSpace('viewer');
+    hitSrc = await session.requestHitTestSource({ space: viewer });
+    log('hit-test източник ОК');
+
+    session.addEventListener('end', () => {
+      log('сесията свърши');
+      renderer.setAnimationLoop(null);
+      btn.disabled = false;
+    });
+    session.addEventListener('visibilitychange', () =>
+      log('visibility:', session.visibilityState));
+
+    log('---');
+    log('чакам кадри');
+  } catch (err) {
+    log('ГРЪМНА:', err.name + ':', err.message || '(без съобщение)');
+    btn.disabled = false;
+  }
+});
+
+function onFrame(time, xrFrame) {
+  if (!xrFrame) {
+    if (!renderer.xr.isPresenting) renderer.render(scene, camera);
+    return;
+  }
+
+  frames++;
+  const pose = xrFrame.getViewerPose(refSpace);
+  if (pose) poses++;
+
+  if (hitSrc) {
+    const res = xrFrame.getHitTestResults(hitSrc);
+    if (res.length) {
+      hits++;
+      const p = res[0].getPose(refSpace);
+      if (p) {
+        reticle.visible = true;
+        reticle.matrix.fromArray(p.transform.matrix);
+      }
+    } else {
+      reticle.visible = false;
+    }
+  }
+
+  cube.rotation.y += 0.03;
+  cube.rotation.x += 0.011;
+
+  replaceLast(`кадри ${frames} · пози ${poses} · попадения ${hits} · мерник ${reticle.visible ? 'да' : 'не'}`);
+
+  renderer.render(scene, camera);
+}
+</script>
+</body>
+</html>
