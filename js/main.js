@@ -21,8 +21,7 @@ function stage(text) {
   note.textContent = text;
 }
 
-// Незадължителна подсистема: ако гръмне веднъж, изключваме я завинаги и
-// продължаваме. Изключение в кадъра иначе спира целия рендер.
+// Незадължителна подсистема: ако гръмне веднъж, изключваме я завинаги.
 const broken = new Set();
 function safe(name, fn) {
   if (broken.has(name)) return;
@@ -55,6 +54,13 @@ window.addEventListener('resize', () => {
 
 const sound = new Sound(camera);
 scene.add(camera);
+
+// Базово осветление, което съществува винаги. Оценката от средата само го
+// коригира; без нея целите пак се виждат.
+scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x2a2a35, 1.0));
+const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+keyLight.position.set(1, 2, 1);
+scene.add(keyLight);
 
 const reticle = new THREE.Mesh(
   new THREE.RingGeometry(0.07, 0.09, 32).rotateX(-Math.PI / 2),
@@ -148,35 +154,45 @@ let arSupported = false;
 let frames = 0;
 let blindFor = 0;
 
-// Колко бързо се предаваме за търсене на равнина. В палатка, на едноцветна
-// стена или на гладък под ARCore никога няма да върне попадение — играта
-// не бива да чака вечно нещо, което няма да дойде.
 const SCAN_WITH_PLANE = 2.0;
 const SCAN_WITHOUT_PLANE = 3.0;
 
+function chosenFeatures() {
+  const on = (id) => {
+    const el = document.getElementById(id);
+    return !!(el && el.checked);
+  };
+  return {
+    planes: on('opt-planes'),
+    anchors: on('opt-anchors'),
+    depth: on('opt-depth'),
+    light: on('opt-light')
+  };
+}
+
 async function enterAR() {
+  const wanted = chosenFeatures();
+
   // Нито един await преди requestSession: иначе Chrome губи user
   // activation-а от тапа и отказва сесията, понякога без грешка.
+  //
+  // Коренът на dom-overlay е document.body, не #overlay. #overlay е
+  // display:none в този момент, а скрит корен чупи композирането.
+  // Тестовата страница подава body и работи безотказно.
   stage('1 · искам сесия…');
-  const started = await startSession(overlay);
+  const started = await startSession(document.body, wanted);
   session = started.session;
 
   stage('2 · сесията тръгна');
   caps = describeSession(session);
-  if (caps.unknown) {
-    caps = { ...caps, anchors: true, planes: true, depth: true, light: true };
-  }
   hud.setCaps(caps);
 
-  // three.js по подразбиране иска 'local-floor', а то е само optional в
-  // сесията. 'local' е гарантирано за immersive-ar.
   renderer.xr.setReferenceSpaceType('local');
 
   // РЕДЪТ Е СЪЩЕСТВЕН. setSession спира прозоречния rAF цикъл при
   // 'sessionstart'. Ако setAnimationLoop дойде след него, three го пуска
-  // пак и кадърът се вика от два източника: веднъж от XR сесията с
-  // валиден frame, веднъж от window.requestAnimationFrame без frame.
-  // Второто рендерира в XR буфера извън XR кадър и картината замръзва.
+  // пак и кадърът се вика от два източника — второто рендерира в XR
+  // буфера извън XR кадър.
   renderer.setAnimationLoop(onXRFrame);
 
   stage('3 · подавам на three.js');
@@ -188,10 +204,10 @@ async function enterAR() {
   hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
 
   stage('5 · свят');
-  depth = new DepthOcclusion(caps.depth);
-  planes = new PlaneViz(scene);
-  envLight = new EnvLight(scene);
-  if (caps.light) await envLight.attach(session);
+  depth = caps.depth ? new DepthOcclusion(true) : null;
+  planes = caps.planes ? new PlaneViz(scene) : null;
+  envLight = caps.light ? new EnvLight(scene) : null;
+  if (envLight) await envLight.attach(session);
 
   await sound.resume();
 
@@ -213,7 +229,7 @@ async function enterAR() {
 
   startScreen.classList.add('hidden');
   overlay.classList.remove('hidden');
-  hud.status('помърдай телефона бавно; след няколко секунди започваме и без равнина');
+  hud.status('помърдай телефона бавно; след няколко секунди започваме');
   scanClock = 0;
   lastTime = 0;
   frames = 0;
@@ -248,10 +264,8 @@ function beginHunt() {
   hud.toast('лов');
 }
 
-function onXRFrame(time, frame) {
-  // Ако по някаква причина кадърът дойде без XR frame, докато сме в
-  // сесия — не пипаме XR буфера.
-  if (!frame) {
+function onXRFrame(time, xrFrame) {
+  if (!xrFrame) {
     if (renderer.xr.isPresenting) return;
     renderer.render(scene, camera);
     return;
@@ -261,10 +275,8 @@ function onXRFrame(time, frame) {
   lastTime = time;
   frames++;
 
-  const pose = frame.getViewerPose(refSpace);
+  const pose = xrFrame.getViewerPose(refSpace);
 
-  // Камерата трябва да е готова ПРЕДИ игровата логика: дроновете мерят
-  // разстояние до нея, а позиционният звук се панорамира спрямо нея.
   if (pose) {
     const p = pose.transform.position;
     const o = pose.transform.orientation;
@@ -275,7 +287,7 @@ function onXRFrame(time, frame) {
 
   let spawnPose = null;
   if (hitTestSource) {
-    const hits = frame.getHitTestResults(hitTestSource);
+    const hits = xrFrame.getHitTestResults(hitTestSource);
     if (hits.length) {
       lastHitResult = hits[0];
       const p = hits[0].getPose(refSpace);
@@ -291,13 +303,12 @@ function onXRFrame(time, frame) {
     }
   }
 
-  safe('равнини', () => planes?.update(frame, refSpace));
-  safe('светлина', () => envLight?.update(frame));
-  safe('дълбочина', () => {
-    if (pose && pose.views.length) depth?.update(frame, pose.views[0]);
+  if (planes) safe('равнини', () => planes.update(xrFrame, refSpace));
+  if (envLight) safe('светлина', () => envLight.update(xrFrame));
+  if (depth) safe('дълбочина', () => {
+    if (pose && pose.views.length) depth.update(xrFrame, pose.views[0]);
   });
 
-  // Тръгваме и без равнина. Целите тогава се раждат около играча.
   if (game.state === STATE.SCANNING) {
     scanClock += dt;
     const limit = spawnPose ? SCAN_WITH_PLANE : SCAN_WITHOUT_PLANE;
@@ -305,18 +316,14 @@ function onXRFrame(time, frame) {
   }
 
   game.update(dt, spawnPose);
-  safe('котви', () => syncAnchors(frame));
-  safe('закриване', () => applyOcclusion());
+  if (caps && caps.anchors) safe('котви', () => syncAnchors(xrFrame));
+  if (depth) safe('закриване', () => applyOcclusion());
   hud.update(game);
 
   const alive = game.targets.length;
   const vis = game.targets.filter((t) => t.object.visible).length;
-  // Всеки кадър, не през шест: замръзнал брояч трябва да значи замръзнал
-  // цикъл, без съмнение дали просто не е бил ред за обновяване.
-  hud.debug(`f${frames} p${pose ? 1 : 0} hit${spawnPose ? 1 : 0} pl${planes ? planes.count : 0} t${vis}/${alive} ${game.state}`);
+  hud.debug(`f${frames} p${pose ? 1 : 0} hit${spawnPose ? 1 : 0} pl${planes ? planes.count : '-'} t${vis}/${alive} ${game.state}`);
 
-  // Ако закриването скрие всичко за две секунди, праговете не пасват на
-  // това устройство. Изключваме го, вместо да оставим празен екран.
   if (depth && depth.active && alive > 0 && vis === 0) {
     blindFor += dt;
     if (blindFor > 2) {
@@ -332,10 +339,10 @@ function onXRFrame(time, frame) {
   renderer.render(scene, camera);
 }
 
-function syncAnchors(frame) {
+function syncAnchors(xrFrame) {
   for (const t of game.targets) {
     if (t.anchor) {
-      const p = frame.getPose(t.anchor.anchorSpace, refSpace);
+      const p = xrFrame.getPose(t.anchor.anchorSpace, refSpace);
       if (p) {
         t.home.set(p.transform.position.x, p.transform.position.y, p.transform.position.z);
         t.home.add(t.anchorOffset || new THREE.Vector3());
@@ -344,7 +351,7 @@ function syncAnchors(frame) {
           t.object.position.z = t.home.z;
         }
       }
-    } else if (t.anchorPending === undefined && caps?.anchors && lastHitResult
+    } else if (t.anchorPending === undefined && lastHitResult
                && t.type !== TYPES.DRONE && t.age < 0.2) {
       t.anchorPending = true;
       t.anchorOffset = t.object.position.clone().sub(lastHitPos);
@@ -371,10 +378,6 @@ let fallback = null;
 
 async function enterFallback() {
   fallback = new FallbackMode({ renderer, scene, camera, video });
-  scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x2a2a35, 1.1));
-  const key = new THREE.DirectionalLight(0xffffff, 0.9);
-  key.position.set(1, 2, 1);
-  scene.add(key);
 
   stage('камера…');
   await fallback.start();
