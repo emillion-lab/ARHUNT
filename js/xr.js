@@ -1,15 +1,9 @@
-// xr.js — договаряне на WebXR сесия с постепенно отстъпление.
-// Никоя от "богатите" функции не е задължителна: ако телефонът не я дава,
-// играта пада едно ниво надолу, а не гърми.
-
-export const REQUIRED = ['hit-test', 'dom-overlay'];
-export const OPTIONAL = [
-  'anchors',
-  'plane-detection',
-  'depth-sensing',
-  'light-estimation',
-  'local-floor'
-];
+// xr.js — договаряне на WebXR сесия.
+//
+// Уроци от диагностиката: минималният набор (hit-test + dom-overlay върху
+// document.body) работи безотказно. Всичко отгоре е по избор и се включва
+// изрично, защото всяка добавена функция променя пътя на композиране в
+// Chrome и може да счупи целия кадър.
 
 export async function checkSupport() {
   if (!navigator.xr) return { xr: false, ar: false };
@@ -22,44 +16,52 @@ export async function checkSupport() {
   return { xr: true, ar };
 }
 
-// Опитва пълния набор, после само задължителното.
-export async function startSession(overlayRoot) {
-  const rich = {
-    requiredFeatures: REQUIRED,
-    optionalFeatures: OPTIONAL,
-    domOverlay: { root: overlayRoot },
-    depthSensing: {
-      usagePreference: ['cpu-optimized'],
-      dataFormatPreference: ['luminance-alpha', 'float32']
-    }
+// wanted: { anchors, planes, depth, light } — всичко по подразбиране false
+export async function startSession(overlayRoot, wanted = {}) {
+  const optional = ['dom-overlay'];
+  if (wanted.anchors) optional.push('anchors');
+  if (wanted.planes) optional.push('plane-detection');
+  if (wanted.depth) optional.push('depth-sensing');
+  if (wanted.light) optional.push('light-estimation');
+
+  const init = {
+    requiredFeatures: ['hit-test'],
+    optionalFeatures: optional,
+    domOverlay: { root: overlayRoot }
   };
 
+  if (wanted.depth) {
+    init.depthSensing = {
+      usagePreference: ['cpu-optimized'],
+      dataFormatPreference: ['luminance-alpha', 'float32']
+    };
+  }
+
   try {
-    const session = await navigator.xr.requestSession('immersive-ar', rich);
+    const session = await navigator.xr.requestSession('immersive-ar', init);
     return { session, degraded: false };
   } catch (err) {
     console.warn('[xr] пълната сесия е отказана, отстъпвам:', err.message);
   }
 
-  const plain = {
-    requiredFeatures: REQUIRED,
+  // Гола сесия: точно каквото тестовата страница доказа, че работи.
+  const session = await navigator.xr.requestSession('immersive-ar', {
+    requiredFeatures: ['hit-test'],
+    optionalFeatures: ['dom-overlay'],
     domOverlay: { root: overlayRoot }
-  };
-  const session = await navigator.xr.requestSession('immersive-ar', plain);
+  });
   return { session, degraded: true };
 }
 
 // Кои функции реално са активни в дадена сесия.
 export function describeSession(session) {
-  const enabled = session.enabledFeatures || [];
+  const enabled = Array.from(session.enabledFeatures || []);
   const has = (f) => enabled.includes(f);
   return {
     list: enabled,
     anchors: has('anchors'),
     planes: has('plane-detection'),
     depth: has('depth-sensing') && session.depthUsage === 'cpu-optimized',
-    light: has('light-estimation'),
-    // enabledFeatures липсва в по-стари Chrome-и — тогава пробваме на сляпо
-    unknown: enabled.length === 0
+    light: has('light-estimation')
   };
 }
